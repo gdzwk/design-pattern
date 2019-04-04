@@ -1,18 +1,8 @@
 # 饿汉式单例
 
-考虑反射、序列化对单例模式的破坏
-克隆情况不考虑，要实现单例，就不会特意去重写 clone()，不存在破坏单例的情况
-
-com.zwk.hungry.HungrySingletonV1
+com.zwk.hungry.HungrySingleton
 * 优点:
   * 线程安全
-* 缺点:
-  * 可被反射、序列化操作破坏单例模式
-  * 提前创建实例，可能浪费内存空间
-  
-com.zwk.hungry.HungrySingletonV2
-* 优点:
-  * 线程安全
-  * 没有 反射、序列化异常
+  * 能够禁止反射调用
 * 缺点:
   * 提前创建实例，可能浪费内存空间
