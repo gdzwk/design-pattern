@@ -63,6 +63,7 @@ public class CustomDynamicProxy {
      */
     private static Class<?> compilerJavaFile(ClassLoader classLoader, Class<?> _interface) {
         try {
+            // 使用java代码编译java文本成class文件，然后classLoader加载class
             File javaFile = getJavaFileInfo(_interface);
             JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
             StandardJavaFileManager manager = compiler.getStandardFileManager(null, null, Charset.forName("UTF-8"));

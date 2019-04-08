@@ -24,11 +24,6 @@
 3. 使用java代码调用编译器编译java文件 -> 加载类class
 4. 调用代理类方法
 
-* 在写创建java文本时，发现方法返回值void使用
-  * (method.getReturnType() == Void.class) -> false
-  * (method.getReturnType() == Void.TYPE) -> true
-  * 所有的包装器类均有一个 TYPE 常量
-
 
 ## 4 cglib代理
 **com.zwk.proxy.cglib**
