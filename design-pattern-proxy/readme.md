@@ -31,7 +31,7 @@
 
 
 ## 4 cglib代理
-**com.zwk.proxy**
+**com.zwk.proxy.cglib**
 cglib代理与动态代理功能类似，可以动态生成class字节码，并直接加载到jvm中形成对应的class类
 与动态代理的区别在于:
 * cglib底层的字节码操作使用了asm框架
