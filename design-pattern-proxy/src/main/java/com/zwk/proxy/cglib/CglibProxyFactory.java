@@ -1,6 +1,5 @@
 package com.zwk.proxy.cglib;
 
-import com.zwk.proxy.DaoImpl;
 import org.springframework.cglib.proxy.Enhancer;
 import org.springframework.cglib.proxy.MethodInterceptor;
 import org.springframework.util.Assert;
@@ -10,6 +9,8 @@ import org.springframework.util.Assert;
  * @author zwk
  */
 public class CglibProxyFactory {
+
+    private CglibProxyFactory() {}
 
     @SuppressWarnings("unchecked")
     public static <T> T getInstance(Class<T> clazz, MethodInterceptor interceptor) {

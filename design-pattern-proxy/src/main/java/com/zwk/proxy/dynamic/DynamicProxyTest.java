@@ -22,7 +22,8 @@ public class DynamicProxyTest {
             return obj;
         });
 
-        dao.save();
+//        dao.save();
+        dao.get();
 
         // 把代理类信息输出到class文件中，用于分析学习动态代理
 //        byte[] bytes = ProxyGenerator.generateProxyClass("$proxy0", new Class[]{IDao.class});
