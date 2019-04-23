@@ -1,0 +1,6 @@
+create table user (id integer primary key, name varchar(10))
+insert into user values (1, 'zwk1')
+insert into user values (2, 'zwk2')
+insert into user values (3, 'zwk3')
+insert into user values (4, 'zwk4')
+insert into user values (5, 'zwk5')
