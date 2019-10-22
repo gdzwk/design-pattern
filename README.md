@@ -5,3 +5,6 @@
 * design-pattern-proxy: 代理模式 (静态代理、jdk动态代理、cglib动态代理)
 * design-pattern-prototype: 原型模式 (克隆、序列化/反序列化)
 * design-pattern-delegate: 委托模式
+* design-pattern-strategy: 策略模式
+* design-pattern-flyweight: 享元模式
+* design-pattern-template: 模板模式
