@@ -27,6 +27,7 @@ public class PoiUtils {
         private XSSFWorkbook xssfWorkbook;
         private int sheetNameCount;
         private Set<String> sheetSet;
+        private SimpleDateFormat sdf;
 
         private static final String DEFAULT_SHEET_NAME = "sheet";
         private static final String DEFAULT_COLUMN_NAME = "col_";
@@ -35,6 +36,7 @@ public class PoiUtils {
             this.xssfWorkbook = new XSSFWorkbook();
             this.sheetNameCount = 0;
             this.sheetSet = new HashSet<String>(8);
+            this.sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         }
 
         /**
@@ -80,7 +82,7 @@ public class PoiUtils {
 
                     Exp exp = field.getAnnotation(Exp.class);
                     assert exp.width() <= 256;
-                    sheet.setColumnWidth(colIndex, exp.width());
+                    sheet.setColumnWidth(colIndex, exp.width() * 256);
 
                     int rowIndex = hIndex;
                     for (T t : list) {
@@ -106,6 +108,9 @@ public class PoiUtils {
                         } else if ("Double".equalsIgnoreCase(field.getType().getSimpleName())) {
                             cell.setCellType(CellType.NUMERIC);
                             cell.setCellValue(field.getDouble(t));
+                        } else if ("Date".equalsIgnoreCase(field.getType().getSimpleName())) {
+                            cell.setCellType(CellType.STRING);
+                            cell.setCellValue(sdf.format((Date) field.get(t)));
                         }
                     }
 
