@@ -1771,4 +1771,218 @@ try {
 
 通常，插入自定义消息解析器或自定义连接实现的过程涉及几个步骤 :
 
-* 
+* 提供自定义 `LineParser` / `LineFormatter` 接口实现。根据需要实现消息解析/格式化逻辑。
+
+  ```java
+  class MyLineParser extends BasicLineParser {
+  
+      @Override
+      public Header parseHeader(CharArrayBuffer buffer) throws ParseException {
+          try {
+              return super.parseHeader(buffer);
+          } catch (ParseException ex) {
+              // Suppress ParseException exception
+              return new BasicHeader(buffer.toString(), null);
+          }
+      }
+  
+  }
+  ```
+
+* 提供一个自定义的 `HttpConnectionFactory` 实现。根据需要用自定义的替换默认的请求编码器或响应解析器。
+
+  ```java
+  HttpConnectionFactory<HttpRoute, ManagedHttpClientConnection> connFactory =
+          new ManagedHttpClientConnectionFactory(
+              new DefaultHttpRequestWriterFactory(),
+              new DefaultHttpResponseParserFactory(
+                      new MyLineParser(), new DefaultHttpResponseFactory()));
+  ```
+
+* 配置HttpClient以使用自定义连接工厂。
+
+  ```java
+  PoolingHttpClientConnectionManager cm = new PoolingHttpClientConnectionManager(connFactory);
+  CloseableHttpClient httpclient = HttpClients.custom().setConnectionManager(cm).build();
+  ```
+
+  
+
+## 7.2  有状态的Http连接
+
+虽然HTTP规范假设会话状态信息始终以HTTP cookie的形式嵌入在HTTP消息中，因此HTTP连接始终是无状态的，但这种假设在现实生活中并不总是正确。在某些情况下，将使用特定的用户身份或在特定的安全上下文中创建HTTP连接，因此无法与其他用户共享，并且只能由同一用户重用。这种有状态HTTP连接的示例是 `NTLM` 身份验证连接和具有客户端证书身份验证的SSL连接。
+
+
+
+### 7.2.1  用户令牌处理
+
+HttpClient依赖 `UserTokenHandler` 接口来确定给定的执行上下文是否是特定于用户的。如果上下文是特定于用户的，则期望此处理程序返回的令牌对象唯一地标识当前用户，如果上下文不包含特定于当前用户的任何资源或详细信息，则该对象为null。用户令牌将用于确保用户特定的资源不会与其他用户共享或重用。
+
+如果可以从给定的执行上下文中获取，则 `UserTokenHandler` 接口的默认实现使用 `Principal` 类的实例表示HTTP连接的状态对象。`DefaultUserTokenHandler` 将使用基于连接的身份验证方案 ( 例如 `NTLM` ) 或启用了客户端身份验证的SSL会话的用户主体。如果两者都不可用，将返回空令牌。
+
+```java
+CloseableHttpClient httpclient = HttpClients.createDefault();
+HttpClientContext context = HttpClientContext.create();
+HttpGet httpget = new HttpGet("http://localhost:8080/");
+CloseableHttpResponse response = httpclient.execute(httpget, context);
+try {
+    Principal principal = context.getUserToken(Principal.class);
+    System.out.println(principal);
+} finally {
+    response.close();
+}
+```
+
+如果默认实现不能满足他们的需求，则用户可以提供自定义实现 :
+
+```java
+UserTokenHandler userTokenHandler = new UserTokenHandler() {
+
+    public Object getUserToken(HttpContext context) {
+        return context.getAttribute("my-token");
+    }
+
+};
+CloseableHttpClient httpclient = HttpClients.custom().setUserTokenHandler(userTokenHandler).build();
+```
+
+
+
+### 7.2.2  持久化状态连接
+
+请注意，只有在执行请求时将相同状态对象绑定到执行上下文的情况下，才可以重用带有状态对象的持久连接。因此，确保将相同的上下文重用于同一用户执行后续HTTP请求，或者将用户令牌绑定到请求执行之前的上下文，这一点非常重要。
+
+```java
+CloseableHttpClient httpclient = HttpClients.createDefault();
+HttpClientContext context1 = HttpClientContext.create();
+HttpGet httpget1 = new HttpGet("http://localhost:8080/");
+CloseableHttpResponse response1 = httpclient.execute(httpget1, context1);
+try {
+    HttpEntity entity1 = response1.getEntity();
+} finally {
+    response1.close();
+}
+Principal principal = context1.getUserToken(Principal.class);
+
+HttpClientContext context2 = HttpClientContext.create();
+context2.setUserToken(principal);
+HttpGet httpget2 = new HttpGet("http://localhost:8080/");
+CloseableHttpResponse response2 = httpclient.execute(httpget2, context2);
+try {
+    HttpEntity entity2 = response2.getEntity();
+} finally {
+    response2.close();
+}
+```
+
+
+
+## 7.3  使用 FutureRequestExecutionService
+
+使用 `FutureRequestExecutionService`，您可以安排http调用，并将响应视为 `Future`。例如，当 多次调用Web服务。使用 `FutureRequestExecutionService` 的优势在于，您可以使用多个线程来同时调度请求，设置任务超时或在不再需要响应时取消它们。
+
+`FutureRequestExecutionService` 使用 `HttpRequestFutureTask` 包装请求，该请求扩展了 `FutureTask`。此类允许您取消任务以及跟踪各种指标 ( 例如请求持续时间 )。
+
+
+
+### 7.3.1  创建 FutureRequestExecutionService
+
+`FutureRequestExecutionService` 的构造函数采用任何现有的 `HttpClient` 实例和一个 `ExecutorService` 实例。同时配置两者时，重要的是将最大连接数与要使用的线程数对齐。当线程数超过连接数时，由于没有可用的连接，连接可能开始超时。当连接数多于线程数时，`FutureRequestExecutionService` 将不会全部使用它们。
+
+```java
+HttpClient httpClient = HttpClientBuilder.create().setMaxConnPerRoute(5).build();
+ExecutorService executorService = Executors.newFixedThreadPool(5);
+FutureRequestExecutionService futureRequestExecutionService =
+    new FutureRequestExecutionService(httpClient, executorService);
+```
+
+
+
+### 7.3.2  请求任务
+
+要添加一个请求任务，只需提供一个 `HttpUriRequest`、`HttpContext` 和 `ResponseHandler`。因为请求是由执行者服务处理的，所以 `ResponseHandler` 是必需的。
+
+```java
+private final class OkidokiHandler implements ResponseHandler<Boolean> {
+    public Boolean handleResponse(
+            final HttpResponse response) throws ClientProtocolException, IOException {
+        return response.getStatusLine().getStatusCode() == 200;
+    }
+}
+
+HttpRequestFutureTask<Boolean> task = futureRequestExecutionService.execute(
+    new HttpGet("http://www.google.com"), 
+    HttpClientContext.create(),
+    new OkidokiHandler());
+// blocks until the request complete and then returns true if you can connect to Google
+boolean ok=task.get();
+```
+
+
+
+### 7.3.3  取消任务
+
+预定的任务可能会被取消。如果任务尚未执行而仅排队等待执行，则它将永远不会执行。如果正在执行，并且 `mayInterruptIfRunning` 参数设置为 `true`，则将在请求上调用 `abort()`; 否则，将取消调用。否则，将仅忽略响应，但将允许请求正常完成。随后对 `task.get()` 的任何调用都将失败，并出现 `IllegalStateException`。应当注意，取消任务仅释放客户端资源。 该请求实际上可以在服务器端正常处理。
+
+```java
+task.cancel(true)
+task.get() // throws an Exception
+```
+
+
+
+### 7.3.4  回调
+
+除了手动调用 `task.get()` 之外，还可以使用 `FutureCallback` 实例，该实例在请求完成时获取回调。这与 `HttpAsyncClient` 中使用的接口相同。
+
+```java
+
+private final class MyCallback implements FutureCallback<Boolean> {
+
+    public void failed(final Exception ex) {
+        // do something
+    }
+
+    public void completed(final Boolean result) {
+        // do something
+    }
+
+    public void cancelled() {
+        // do something
+    }
+}
+
+HttpRequestFutureTask<Boolean> task = futureRequestExecutionService.execute(
+    new HttpGet("http://www.google.com"), 
+    HttpClientContext.create(),
+    new OkidokiHandler(), new MyCallback());
+```
+
+
+
+### 7.3.5  指标
+
+`FutureRequestExecutionService` 通常用于进行大量Web服务调用的应用程序中。为了方便 监视或配置调整时，`FutureRequestExecutionService` 会跟踪多个指标。
+
+每个 `HttpRequestFutureTask` 提供的方法都可以获取计划，开始和结束任务的时间。此外，请求和任务持续时间也可用。这些度量标准汇总在 `FutureRequestExecutionMetrics` 实例的 `FutureRequestExecutionService` 中，可以通过 `FutureRequestExecutionService.metrics()` 访问该实例。
+
+```java
+task.scheduledTime() // returns the timestamp the task was scheduled
+task.startedTime() // returns the timestamp when the task was started
+task.endedTime() // returns the timestamp when the task was done executing
+task.requestDuration // returns the duration of the http request
+task.taskDuration // returns the duration of the task from the moment it was scheduled
+
+FutureRequestExecutionMetrics metrics = futureRequestExecutionService.metrics()
+metrics.getActiveConnectionCount() // currently active connections
+metrics.getScheduledConnectionCount(); // currently scheduled connections
+metrics.getSuccessfulConnectionCount(); // total number of successful requests
+metrics.getSuccessfulConnectionAverageDuration(); // average request duration
+metrics.getFailedConnectionCount(); // total number of failed tasks
+metrics.getFailedConnectionAverageDuration(); // average duration of failed tasks
+metrics.getTaskCount(); // total number of tasks scheduled
+metrics.getRequestCount(); // total number of requests
+metrics.getRequestAverageDuration(); // average request duration
+metrics.getTaskAverageDuration(); // average task duration
+```
+
